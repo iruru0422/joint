@@ -1342,12 +1342,19 @@ class InOutMentionEvaluationResult:
         self.correct_true_predictions = 0.0
         self.total_false_predictions = 0.0
         self.correct_false_predictions = 0.0
+        self.total_predictions_ner = 0.0
+        self.correct_predictions_ner = 0.0
+        self.total_true_predictions_ner = 0.0
+        self.correct_true_predictions_ner = 0.0
+        self.total_false_predictions_ner = 0.0
+        self.correct_false_predictions_ner = 0.0
 
     def _preprocess_logits(self, subword_logits):
         if self.vocab_index_of_o > -1:
             return (subword_logits.argmax(-1) != self.vocab_index_of_o).bool()
         else:
             return (subword_logits > self.activation_threshold).squeeze(-1)
+        
 
     def update_scores(self, inputs_eval_mask, s_mentions_is_in_mention, subword_logits):
         self.total_predictions += inputs_eval_mask.sum().item()
@@ -1365,6 +1372,24 @@ class InOutMentionEvaluationResult:
                         self.total_false_predictions += 1.0
                         if not p:
                             self.correct_false_predictions += 1.0
+
+    def update_scores_for_ner(self, inputs_eval_mask, s_mentions_is_in_mention, subword_logits):
+            self.total_predictions_ner += inputs_eval_mask.sum().item()
+            for em, ac, pr in zip(inputs_eval_mask, s_mentions_is_in_mention.bool(),
+                                self._preprocess_logits(subword_logits)):
+                for m, a, p in zip(em, ac, pr):
+                    if m:
+                        if a == p:
+                            self.correct_predictions_ner += 1.0
+                        if a:
+                            self.total_true_predictions_ner += 1.0
+                            if p:
+                                self.correct_true_predictions_ner += 1.0
+                        else:
+                            self.total_false_predictions_ner += 1.0
+                            if not p:
+                                self.correct_false_predictions_ner += 1.0
+
 
     @property
     def overall_mention_detection_accuracy(self):

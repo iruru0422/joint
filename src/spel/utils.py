@@ -132,7 +132,7 @@ def store_validation_data_wiki(checkpoints_root, batch_size, label_size, is_trai
         with open(os.path.join(checkpoints_root, dataset_name, f"{ind}"), "wb") as store_file:
             pickle.dump((inputs.token_ids.cpu(), subword_mentions.ids.cpu(), subword_mentions.probs.cpu(),
                          inputs.eval_mask.cpu(), subword_mentions.dictionary, inputs.raw_mentions,
-                         inputs.is_in_mention.cpu(), inputs.bioes.cpu()), store_file,
+                         inputs.is_in_mention.cpu(), inputs.bioes.cpu(), inputs.ner_tags.cpu()), store_file,
                         protocol=pickle.HIGHEST_PROTOCOL)
     return dataset_name
 
@@ -180,6 +180,7 @@ def get_aida_set_phrase_splitted_documents(dataset_name):
         document_words = []
         document_labels = []
         document_candidates = []
+        document_ner_labels = []
 
         for annotation in document.annotations:
             for a in annotation:
@@ -190,6 +191,7 @@ def get_aida_set_phrase_splitted_documents(dataset_name):
                     document_labels.append(a.yago_entity.encode('ascii').decode('unicode-escape'))
                 else:
                     document_labels.append('|||O|||')
+                document_ner_labels.append(a.ner_tag)
         original_string = " ".join(document_words)
         tokenized_mention = tokenizer(original_string)
         tokens_offsets = list(zip(tokenized_mention.tokens(), tokenized_mention.encodings[0].offsets))[1:-1]
@@ -198,14 +200,14 @@ def get_aida_set_phrase_splitted_documents(dataset_name):
         w_ind = 0
         subword_annotations = []
         word_annotations = []
-        for w, l, cnds in zip(document_words, document_labels, document_candidates):
+        for w, l, cnds, ner_label in zip(document_words, document_labels, document_candidates,document_ner_labels):
             converted_to_words = "".join([x[1:] if x.startswith("\u0120")
                                           else x for x in subword_tokens[mapping[w_ind][0]:mapping[w_ind][1]]])
             if w == converted_to_words:
                 for sub_w in subword_tokens[mapping[w_ind][0]:mapping[w_ind][1]]:
                     subword_annotations.append(SubwordAnnotation([1.0], [dl_sa.mentions_vocab[l]], sub_w))
                 word_annotations.append(WordAnnotation(subword_annotations[mapping[w_ind][0]:mapping[w_ind][1]],
-                                                       tokens_offsets[mapping[w_ind][0]:mapping[w_ind][1]], cnds))
+                                                       tokens_offsets[mapping[w_ind][0]:mapping[w_ind][1]], cnds, ner_label))
                 w_ind += 1
             elif len(mapping) > w_ind + 1 and w == "".join([x[1:] if x.startswith("\u0120")
                                                             else x for x in subword_tokens[
@@ -213,7 +215,7 @@ def get_aida_set_phrase_splitted_documents(dataset_name):
                 for sub_w in subword_tokens[mapping[w_ind][0]:mapping[w_ind+1][1]]:
                     subword_annotations.append(SubwordAnnotation([1.0], [dl_sa.mentions_vocab[l]], sub_w))
                 word_annotations.append(WordAnnotation(subword_annotations[mapping[w_ind][0]:mapping[w_ind+1][1]],
-                                                       tokens_offsets[mapping[w_ind][0]:mapping[w_ind+1][1]], cnds))
+                                                       tokens_offsets[mapping[w_ind][0]:mapping[w_ind+1][1]], cnds, ner_label))
                 w_ind += 2
             else:
                 raise ValueError("This should not happen")

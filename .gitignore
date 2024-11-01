@@ -161,3 +161,4 @@ cython_debug/
 /resources/data/AIDA-YAGO2-dataset.tsv
 .logdir/
 .checkpoints/
+wandb

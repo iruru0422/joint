@@ -4,7 +4,7 @@ import pathlib
 import json
 from datetime import date
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 AIDA_CANONICAL_REDIRECTS = None
 OOD_CANONICAL_REDIRECTS = None
@@ -54,7 +54,7 @@ def get_ood_canonical_redirects():
 
 
 def get_aida_yago_tsv_file_path():
-    return get_resources_dir() / "data" / "AIDA-YAGO2-dataset.tsv"
+    return get_resources_dir() / "data" / "AIDA-YAGO2-dataset_with_ner.tsv"
 
 
 def get_exec_run_file():
@@ -95,6 +95,14 @@ def get_aida_plus_wikipedia_plus_out_of_domain_vocab():
     dfile = dictionary_file.open("r")
     for _ad_element in dfile.read().split("\n"):
         if _ad_element not in mentions_vocab:
+            mentions_vocab[_ad_element] = len(mentions_vocab)
+    return mentions_vocab
+
+def get_aida_ner_vocab():
+    mentions_vocab = dict({'O': 0})
+    dictionary_file = get_resources_dir() / "vocab" / "aida_ner.txt"
+    with dictionary_file.open("r") as dfile:
+        for _ad_element in dfile.read().split("\n"):
             mentions_vocab[_ad_element] = len(mentions_vocab)
     return mentions_vocab
 
