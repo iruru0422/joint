@@ -20,7 +20,6 @@ class AnnotationRecord:
             - column 5 is the corresponding Wikipedia URL of the entity (added for convenience when evaluating against a Wikipedia based method)
             - column 6 is the corresponding Wikipedia ID of the entity (added for convenience when evaluating against a Wikipedia based method - the ID refers to the dump used for annotation, 2010-08-17)
             - column 7 is the corresponding Freebase mid, if there is one (thanks to Massimiliano Ciaramita from Google Zürich for creating the mapping and making it available to us)
-            - column 8 is the corresponding NER tag (if available)
         """
         data_columns = line.split('\t')
         self.token = None
@@ -30,7 +29,7 @@ class AnnotationRecord:
         self.wikipedia_url = None
         self.wikipedia_id = None
         self.freebase_mid = None
-        self.ner_tag = None
+        # self.ner_tag = None
         self.candidates = None
         if data_columns:
             self.token = data_columns[0]
@@ -46,8 +45,8 @@ class AnnotationRecord:
             self.wikipedia_id = data_columns[5]
         if len(data_columns) > 6:
             self.freebase_mid = data_columns[6]
-        if len(data_columns) > 7:
-            self.ner_tag = data_columns[7]
+        # if len(data_columns) > 7:
+        #     self.ner_tag = data_columns[7]
 
 
     def set_candidates(self, candidate_record):
@@ -198,18 +197,18 @@ class AIDADataset:
         self.data_path = str(get_aida_yago_tsv_file_path().absolute())
         assert os.path.exists(self.data_path), f"The passed dataset address: {self.data_path} does not exist"
         self.load_dataset()
-        self.ner_label_mapping = {
-                            'O': 0,
-                            '<pad>': 1,
-                            'B-PER': 2,
-                            'I-PER': 3,
-                            'B-ORG': 4,
-                            'I-ORG': 5,
-                            'B-LOC': 6,
-                            'I-LOC': 7,
-                            'B-MISC': 8,
-                            'I-MISC': 9
-                        }
+        # self.ner_label_mapping = {
+        #                     'O': 0,
+        #                     '<pad>': 1,
+        #                     'B-PER': 2,
+        #                     'I-PER': 3,
+        #                     'B-ORG': 4,
+        #                     'I-ORG': 5,
+        #                     'B-LOC': 6,
+        #                     'I-LOC': 7,
+        #                     'B-MISC': 8,
+        #                     'I-MISC': 9
+        #                 }
 
 
     def load_dataset(self):
@@ -237,27 +236,27 @@ class AIDADataset:
         self.dataset = {"train": annotations[0], "testa": annotations[1], "testb": annotations[2]}
         ppr_for_ned_candidates_zip.close()
     
-    def extract_ner_tags(self):
-        ner_tags = {"train": [], "testa": [], "testb": []}
-        data_split_id = -1  # -1は最初は無視
+    # def extract_ner_tags(self):
+    #     ner_tags = {"train": [], "testa": [], "testb": []}
+    #     data_split_id = -1  # -1は最初は無視
 
-        with open(self.data_path, "r", encoding="utf-8") as data_file:
-            for line in data_file:
-                line = line.strip()
-                if not line:
-                    continue
-                if line.startswith("-DOCSTART-"):
-                    if line == TRAIN_START_LINE:
-                        data_split_id = 0  # トレーニングデータ
-                    elif line == TESTA_START_LINE:
-                        data_split_id = 1  # テストAデータ
-                    elif line == TESTB_START_LINE:
-                        data_split_id = 2  # テストBデータ
-                else:
-                    if data_split_id != -1:  # データ分割が設定されている場合
-                        data_columns = line.split('\t')
-                        ner_tag = data_columns[-1]
-                        encorded_ner_tag = self.ner_label_mapping[ner_tag]
-                        ner_tags[["train", "testa", "testb"][data_split_id]].append(encorded_ner_tag)  # 8列目のNERタグを追加
-        return ner_tags
+    #     with open(self.data_path, "r", encoding="utf-8") as data_file:
+    #         for line in data_file:
+    #             line = line.strip()
+    #             if not line:
+    #                 continue
+    #             if line.startswith("-DOCSTART-"):
+    #                 if line == TRAIN_START_LINE:
+    #                     data_split_id = 0  # トレーニングデータ
+    #                 elif line == TESTA_START_LINE:
+    #                     data_split_id = 1  # テストAデータ
+    #                 elif line == TESTB_START_LINE:
+    #                     data_split_id = 2  # テストBデータ
+    #             else:
+    #                 if data_split_id != -1:  # データ分割が設定されている場合
+    #                     data_columns = line.split('\t')
+    #                     ner_tag = data_columns[-1]
+    #                     encorded_ner_tag = self.ner_label_mapping[ner_tag]
+    #                     ner_tags[["train", "testa", "testb"][data_split_id]].append(encorded_ner_tag)  # 8列目のNERタグを追加
+    #     return ner_tags
 

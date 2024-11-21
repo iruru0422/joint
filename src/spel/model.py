@@ -38,8 +38,6 @@ class SpELAnnotator:
         self.bert_lm_h = 0
         self.out = None
         self.softmax = None
-        self.ner_weight = None
-        self.el_weight = None
 
     def init_model_from_scratch(self, base_model=BERT_MODEL_NAME, device="cpu"):
         """
@@ -54,13 +52,7 @@ class SpELAnnotator:
             self.ner_classification_head = nn.Linear(self.bert_lm_h, 9).to(device)  # NERタスク用の新しい線形層を追加
             self.out = nn.Embedding(num_embeddings=len(dl_sa.mentions_vocab),
                                     embedding_dim=self.bert_lm_h, sparse=True).to(device)
-            self.ner_weight = nn.Parameter(torch.ones(1,device=device)) # NERの重み
-            self.el_weight = nn.Parameter(torch.ones(1,device=device)) # ELの重み
-            self.schedulers = []
-
-            # # NER用に変更する場合
-            # self.out = nn.Linear(in_features=self.bert_lm_h, out_features=len(dl_sa.mentions_vocab)).to(device)
-
+            #self.schedulers = []
             self.softmax = nn.Softmax(dim=-1)
 
     def shrink_classification_head_to_aida(self, device):
@@ -83,90 +75,55 @@ class SpELAnnotator:
         new_out.load_state_dict(new_state_dict, strict=False)
         self.out = new_out.to(device)
         dl_sa.shrink_vocab_to_aida()
-        dl_sa.make_vocab_to_ner()
         model_params = sum(p.numel() for p in self.bert_lm.parameters())
         out_params = sum(p.numel() for p in self.out.parameters())
         print(f' * Shrank model to {model_params+out_params} number of parameters ({model_params} parameters '
               f'for the encoder and {out_params} parameters for the classification head)!')
     
-    # def shrink_classification_head_to_aida(self, device):
-    #     """
-    #     This will be called in fine-tuning step 3 to shrink the classification head to in-domain data vocabulary.
-    #     """
-    #     aida_mentions_vocab, aida_mentions_itos = dl_sa.get_aida_ner_vocab_and_itos()
-    #     if self.out.out_features == 10:  # 10に変更
-    #         return
+    # def freeze_encoder_and_el(self):
+    #     for param in self.bert_lm.parameters():
+    #         param.requires_grad = False  # エンコーダのパラメータを凍結
 
-    #     current_state_dict = self.out.state_dict()
+    #     for param in self.out.parameters():
+    #         param.requires_grad = False  # EL層のパラメータを凍結
+
+    #     print("Encoder and EL layer frozen.")
+    
+    # def unfreeze_encoder_and_el(self):
+    #     for param in self.bert_lm.parameters():
+    #         param.requires_grad = True  # エンコーダのパラメータを更新可能にする
+
+    #     for param in self.out.parameters():
+    #         param.requires_grad = True  # EL層のパラメータを更新可能にする
+
+    #     print("Encoder and EL layer unfrozen.") 
+
+    # def compute_loss(self, ner_loss, el_loss):
+    #         # L1とL2正則化の強さ
+    #     l1_lambda = 0.01
+    #     l2_lambda = 0.01
         
-    #     # nn.Linearに変更
-    #     new_out = nn.Linear(in_features=self.bert_lm_h, out_features=10).to(device)
+    #     # 学習可能な重みを用いたロスの計算
+    #     total_loss = self.ner_weight * ner_loss + self.el_weight * el_loss
+        
+    #     # L1とL2の正則化項を追加
+    #     l1_reg = l1_lambda * (self.ner_weight.abs().sum() + self.el_weight.abs().sum())
+    #     l2_reg = l2_lambda * (self.ner_weight.pow(2).sum() + self.el_weight.pow(2).sum())
+        
+    #     # 正則化を含めた損失
+    #     total_loss += l1_reg + l2_reg
+    #     return total_loss
 
-    #     # 重みの転送は必要に応じて行うことができます
-    #     new_state_dict = new_out.state_dict()
-
-    #     # # 重みの転送を行うロジック
-    #     # for index_new in range(min(len(aida_mentions_itos), 10)):  # サイズの調整
-    #     #     item_new = aida_mentions_itos[index_new]
-
-    #     #     # assert item_new in dl_sa.mentions_vocab, \
-    #     #     #     "the aida fine-tuned mention vocab must be a subset of the original vocab"
-    #     #     index_current = dl_sa.mentions_vocab[item_new]
-    #     #     new_state_dict['weight'][index_new] = current_state_dict['weight'][index_current]
-
-    #     new_out.load_state_dict(new_state_dict, strict=False)
+    # def shrink_classification_head_to_ner(self, device):
+    #     """
+    #     This will be called in fine-tuning step 3 to adjust the classification head for NER with 9 labels.
+    #     """
+    #     new_out = nn.Embedding(num_embeddings=10, embedding_dim=self.bert_lm_h, sparse=True).to(device)
     #     self.out = new_out.to(device)
-    #     dl_sa.shrink_vocab_to_aida()
-
     #     model_params = sum(p.numel() for p in self.bert_lm.parameters())
     #     out_params = sum(p.numel() for p in self.out.parameters())
-    #     print(f' * Shrank model to {model_params + out_params} number of parameters ({model_params} parameters '
+    #     print(f' * Adjusted model to {model_params + out_params} number of parameters ({model_params} parameters '
     #         f'for the encoder and {out_params} parameters for the classification head)!')
-
-    def freeze_encoder_and_el(self):
-        for param in self.bert_lm.parameters():
-            param.requires_grad = False  # エンコーダのパラメータを凍結
-
-        for param in self.out.parameters():
-            param.requires_grad = False  # EL層のパラメータを凍結
-
-        print("Encoder and EL layer frozen.")
-    
-    def unfreeze_encoder_and_el(self):
-        for param in self.bert_lm.parameters():
-            param.requires_grad = True  # エンコーダのパラメータを更新可能にする
-
-        for param in self.out.parameters():
-            param.requires_grad = True  # EL層のパラメータを更新可能にする
-
-        print("Encoder and EL layer unfrozen.") 
-
-    def compute_loss(self, ner_loss, el_loss):
-            # L1とL2正則化の強さ
-        l1_lambda = 0.01
-        l2_lambda = 0.01
-        
-        # 学習可能な重みを用いたロスの計算
-        total_loss = self.ner_weight * ner_loss + self.el_weight * el_loss
-        
-        # L1とL2の正則化項を追加
-        l1_reg = l1_lambda * (self.ner_weight.abs().sum() + self.el_weight.abs().sum())
-        l2_reg = l2_lambda * (self.ner_weight.pow(2).sum() + self.el_weight.pow(2).sum())
-        
-        # 正則化を含めた損失
-        total_loss += l1_reg + l2_reg
-        return total_loss
-
-    def shrink_classification_head_to_ner(self, device):
-        """
-        This will be called in fine-tuning step 3 to adjust the classification head for NER with 9 labels.
-        """
-        new_out = nn.Embedding(num_embeddings=10, embedding_dim=self.bert_lm_h, sparse=True).to(device)
-        self.out = new_out.to(device)
-        model_params = sum(p.numel() for p in self.bert_lm.parameters())
-        out_params = sum(p.numel() for p in self.out.parameters())
-        print(f' * Adjusted model to {model_params + out_params} number of parameters ({model_params} parameters '
-            f'for the encoder and {out_params} parameters for the classification head)!')
 
 
 
@@ -188,7 +145,7 @@ class SpELAnnotator:
     def get_canonical_redirects(limit_to_conll=True):
         return get_aida_train_canonical_redirects() if limit_to_conll else get_ood_canonical_redirects()
 
-    def create_optimizers(self, encoder_lr=5e-5, decoder_lr=0.1, ner_decoder_lr= 5e-5, exclude_parameter_names_regex=None,warmup_steps=0, num_training_steps=0,freeze_steps=0):
+    def create_optimizers(self, encoder_lr=5e-5, decoder_lr=0.1, exclude_parameter_names_regex=None):
         if exclude_parameter_names_regex is not None:
             bert_lm_parameters = list()
             regex = re.compile(exclude_parameter_names_regex)
@@ -203,19 +160,18 @@ class SpELAnnotator:
             #  BCEWithLogitsLoss will become unstable and memory will explode.
             decoder_lr = 1e-323
         out_optim = optim.SparseAdam(self.out.parameters(), lr=decoder_lr)
-        ner_optim = optim.Adam(self.ner_classification_head.parameters(), lr=ner_decoder_lr)  # NER用のオプティマイザを追加
-        weight_optim = optim.Adam([self.ner_weight, self.el_weight], lr=1e-3)  # 重みのオプティマイザを追加
-        if freeze_steps > 0:
-            unfreeze_total_steps = num_training_steps-freeze_steps
-            unfreeze_warmup_steps = unfreeze_total_steps * 0.1
-            self.schedulers.append(get_linear_schedule_with_warmup(bert_optim, num_warmup_steps=unfreeze_warmup_steps, num_training_steps=unfreeze_total_steps))
-            self.schedulers.append(get_linear_schedule_with_warmup(out_optim, num_warmup_steps=unfreeze_warmup_steps, num_training_steps=unfreeze_total_steps))
-        else:
-            self.schedulers.append(get_linear_schedule_with_warmup(bert_optim, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps))
-            self.schedulers.append(get_linear_schedule_with_warmup(out_optim, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps))
-        self.schedulers.append(get_linear_schedule_with_warmup(ner_optim, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps))
-        return bert_optim, out_optim, ner_optim, weight_optim
-
+        # ner_optim = optim.Adam(self.ner_classification_head.parameters(), lr=ner_decoder_lr)  # NER用のオプティマイザを追加
+        # weight_optim = optim.Adam([self.ner_weight, self.el_weight], lr=1e-3)  # 重みのオプティマイザを追加
+        # if freeze_steps > 0:
+        #     unfreeze_total_steps = num_training_steps-freeze_steps
+        #     unfreeze_warmup_steps = unfreeze_total_steps * 0.1
+        #     self.schedulers.append(get_linear_schedule_with_warmup(bert_optim, num_warmup_steps=unfreeze_warmup_steps, num_training_steps=unfreeze_total_steps))
+        #     self.schedulers.append(get_linear_schedule_with_warmup(out_optim, num_warmup_steps=unfreeze_warmup_steps, num_training_steps=unfreeze_total_steps))
+        # else:
+        #     self.schedulers.append(get_linear_schedule_with_warmup(bert_optim, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps))
+        #     self.schedulers.append(get_linear_schedule_with_warmup(out_optim, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps))
+        # self.schedulers.append(get_linear_schedule_with_warmup(ner_optim, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps))
+        return bert_optim, out_optim
     @staticmethod
     def create_warmup_scheduler(optimizer, warmup_steps):
         """
@@ -266,8 +222,8 @@ class SpELAnnotator:
         with torch.no_grad():
             token_ids = torch.LongTensor(subword_ids_list)
             raw_logits, hidden_states = self.get_model_raw_logits_inference(token_ids, return_hidden_states=True)
-            ner_raw_logits, ner_hidden_states = self.get_model_raw_logits_inference_ner(token_ids, return_hidden_states=True)
-            logits = self.get_model_logits_inference(raw_logits, ner_raw_logits, hidden_states, k_for_top_k_to_keep, token_offsets)
+            # ner_raw_logits, ner_hidden_states = self.get_model_raw_logits_inference_ner(token_ids, return_hidden_states=True)
+            logits = self.get_model_logits_inference(raw_logits, hidden_states, k_for_top_k_to_keep, token_offsets)
             return logits
     
 
@@ -286,21 +242,21 @@ class SpELAnnotator:
     
 
 
-    def get_model_logits_inference(self, raw_logits, ner_raw_logits,hidden_states, k_for_top_k_to_keep, token_offsets=None) \
+    def get_model_logits_inference(self, raw_logits, hidden_states, k_for_top_k_to_keep, token_offsets=None) \
             -> List[SubwordAnnotation]:
         # hidden_states is not used in this function but provided for the classes inheriting SpELAnnotator.
         logits = self.softmax(raw_logits)
-        ner_logits = self.softmax(ner_raw_logits)
+        # ner_logits = self.softmax(ner_raw_logits)
         # The following line could possibly cause errors in torch version 1.13.1
         # see https://github.com/pytorch/pytorch/issues/95455 for more information
         top_k_logits, top_k_indices = logits.topk(k_for_top_k_to_keep)
         top_k_logits = top_k_logits.squeeze(0).cpu().tolist()
         top_k_indices = top_k_indices.squeeze(0).cpu().tolist()
 
-        ner_indices = ner_logits.argmax(dim=-1).squeeze(0).cpu().tolist()
+        # ner_indices = ner_logits.argmax(dim=-1).squeeze(0).cpu().tolist()
 
         chunk = ["" for _ in top_k_logits] if token_offsets is None else token_offsets
-        return [SubwordAnnotation(p, i, x[0], ner_tag=ner_indices[idx]) for idx,(p, i, x) in enumerate(zip(top_k_logits, top_k_indices, chunk))]
+        return [SubwordAnnotation(p, i, x[0]) for idx,(p, i, x) in enumerate(zip(top_k_logits, top_k_indices, chunk))]
 
     def get_model_raw_logits_inference(self, token_ids, return_hidden_states=False):
         encs = self.lm_module(token_ids.to(self.current_device)).hidden_states
@@ -321,10 +277,10 @@ class SpELAnnotator:
                  potent_score_threshold=0.82):
         self.bert_lm.eval()
         self.out.eval()
-        self.ner_classification_head.eval()  # NER用の分類ヘッドを評価モードに変更
+        # self.ner_classification_head.eval()  # NER用の分類ヘッドを評価モードに変更
         vocab_pad_id = dl_sa.mentions_vocab['<pad>']
 
-        all_words, all_tags, all_y, all_y_hat, all_predicted, all_token_ids, all_ner_tags, all_ner_predicted = [], [], [], [], [], [], [], []
+        all_words, all_tags, all_y, all_y_hat, all_predicted, all_token_ids = [], [], [], [], [], []
         subword_eval = InOutMentionEvaluationResult(vocab_index_of_o=dl_sa.mentions_vocab['|||O|||'])
         dataset_name = store_validation_data_wiki(
             self.checkpoints_root, batch_size, label_size, is_training=is_training,
@@ -335,20 +291,20 @@ class SpELAnnotator:
                 batch_token_ids, label_ids, label_probs, eval_mask, label_id_to_entity_id_dict, \
                     batch_entity_ids, is_in_mention, _ , batch_ner_tags= pickle.load(open(d_file, "rb"))
                 logits = self.get_model_raw_logits_inference(batch_token_ids)
-                logits_ner = self.get_model_raw_logits_inference_ner(batch_token_ids)
-                logits_ner = torch.softmax(logits_ner, dim=-1)
+                # logits_ner = self.get_model_raw_logits_inference_ner(batch_token_ids)
+                # logits_ner = torch.softmax(logits_ner, dim=-1)
                 subword_eval.update_scores(eval_mask, is_in_mention, logits)
-                subword_eval.update_scores_for_ner(eval_mask, batch_ner_tags, logits_ner)  # NER用のスコアを更新
+                # subword_eval.update_scores_for_ner(eval_mask, batch_ner_tags, logits_ner)  # NER用のスコアを更新
                 y_hat = logits.argmax(-1)
-                y_hat_ner = logits_ner.argmax(-1)
+                # y_hat_ner = logits_ner.argmax(-1)
 
                 tags = list()
                 predtags = list()
                 y_resolved_list = list()
                 y_hat_resolved_list = list()
                 token_list = list()
-                ner_tags = list()
-                ner_predtags = list()
+                # ner_tags = list()
+                # ner_predtags = list()
 
                 for batch_id, seq in enumerate(label_probs.max(-1)[1]):
                     for token_id, label_id in enumerate(seq[:-self.text_chunk_overlap]):
@@ -362,11 +318,11 @@ class SpELAnnotator:
                         y_hat_resolved_list.append(y_hat_resolved)
                         predtags.append(dl_sa.mentions_itos[y_hat_resolved])
                         token_list.append(batch_token_ids[batch_id][token_id].item())
-                        if eval_mask[batch_id][token_id].item() != 0:  # 評価対象トークンの場合
-                            ner_tag = batch_ner_tags[batch_id][token_id].item()
-                            ner_pred_tag = y_hat_ner[batch_id][token_id].item()  # 予測されたNERタグ
-                            ner_tags.append(dl_sa.ner_itos[ner_tag])  # 実際のNERタグ
-                            ner_predtags.append(dl_sa.ner_itos[ner_pred_tag])  # 予測されたNERタグ
+                        # if eval_mask[batch_id][token_id].item() != 0:  # 評価対象トークンの場合
+                        #     ner_tag = batch_ner_tags[batch_id][token_id].item()
+                        #     ner_pred_tag = y_hat_ner[batch_id][token_id].item()  # 予測されたNERタグ
+                        #     ner_tags.append(dl_sa.ner_itos[ner_tag])  # 実際のNERタグ
+                        #     ner_predtags.append(dl_sa.ner_itos[ner_pred_tag])  # 予測されたNERタグ
 
 
                 all_y.append(y_resolved_list)
@@ -375,48 +331,50 @@ class SpELAnnotator:
                 all_predicted.append(predtags)
                 all_words.append(tokenizer.convert_ids_to_tokens(token_list))
                 all_token_ids.append(token_list)
-                all_ner_tags.append(ner_tags)
-                all_ner_predicted.append(ner_predtags)
+                # all_ner_tags.append(ner_tags)
+                # all_ner_predicted.append(ner_predtags)
                 del batch_token_ids, label_ids, label_probs, eval_mask, \
                     label_id_to_entity_id_dict, batch_entity_ids, logits, y_hat
 
         y_true = numpy.array(list(chain(*all_y)))
         y_pred = numpy.array(list(chain(*all_y_hat)))
         all_token_ids = numpy.array(list(chain(*all_token_ids)))
-        y_true_ner = numpy.array(list(chain(*all_ner_tags)))
-        y_pred_ner = numpy.array(list(chain(*all_ner_predicted)))
+        # y_true_ner = numpy.array(list(chain(*all_ner_tags)))
+        # y_pred_ner = numpy.array(list(chain(*all_ner_predicted)))
 
-        if epoch == 59:
-            # 一致しない箇所のインデックスを取得
-            mismatch_indices = numpy.where((y_true != y_pred) & (y_true != vocab_pad_id))
-            # 一致しない y_true と y_pred の値を取得
-            mismatches = list(zip([dl_sa.mentions_itos[int(idx)] for idx in y_true[mismatch_indices]],
-                      [dl_sa.mentions_itos[int(idx)] for idx in y_pred[mismatch_indices]]))
-
-            # 一致しない箇所を出力
-            file_path = '/app/Test/generated_data/mismatches.txt'
-            with open(file_path,'w') as f:
-                for i, (true_val, pred_val) in enumerate(mismatches):
-                    f.write(f"mismatch {i}: {true_val} != {pred_val}\n")
+        #トークンも出力するようにさせたい
+        # if epoch == 59:
+        #     # 一致しない箇所のインデックスを取得
+        #     mismatch_indices = numpy.where((y_true != y_pred) & (y_true != vocab_pad_id))
+        #     # 一致しない y_true と y_pred の値を取得
+        #     mismatches = list(zip([dl_sa.mentions_itos[int(idx)] for idx in y_true[mismatch_indices]],
+        #               [dl_sa.mentions_itos[int(idx)] for idx in y_pred[mismatch_indices]]))
+            
+        #     mismach_token = dl_sa.all_token_ids[mismatch_indices]
+        #     # 一致しない箇所を出力
+        #     file_path = '/app/Test/generated_data/mismatches.txt'
+        #     with open(file_path,'w') as f:
+        #         for i, (true_val, pred_val) in enumerate(zip(all_token_ids,mismatches)):
+        #             f.write(f"token: {} mismatch {i}: {true_val} != {pred_val}\n")
                 
 
         num_proposed = len(y_pred[(1 < y_pred) & (all_token_ids > 0)])
         num_correct = (((y_true == y_pred) & (1 < y_true) & (all_token_ids > 0))).astype(int).sum()
         num_gold = len(y_true[(1 < y_true) & (all_token_ids > 0)])
-        num_proposed_ner = len([1 for tag, token_id in zip(y_pred_ner, all_token_ids) if tag != 'O' and token_id > 0])
-        num_correct_ner = sum([1 for true_tag, pred_tag, token_id in zip(y_true_ner, y_pred_ner, all_token_ids)
-                       if true_tag == pred_tag and true_tag != 'O' and token_id > 0])
-        num_gold_ner = len([1 for true_tag, token_id in zip(y_true_ner, all_token_ids) if true_tag != 'O' and token_id > 0])
+        # num_proposed_ner = len([1 for tag, token_id in zip(y_pred_ner, all_token_ids) if tag != 'O' and token_id > 0])
+        # num_correct_ner = sum([1 for true_tag, pred_tag, token_id in zip(y_true_ner, y_pred_ner, all_token_ids)
+        #                if true_tag == pred_tag and true_tag != 'O' and token_id > 0])
+        # num_gold_ner = len([1 for true_tag, token_id in zip(y_true_ner, all_token_ids) if true_tag != 'O' and token_id > 0])
 
 
         precision = num_correct / num_proposed if num_proposed > 0.0 else 0.0
         recall = num_correct / num_gold if num_gold > 0.0 else 0.0
         f1 = 2.0 * precision * recall / (precision + recall) if precision + recall > 0.0 else 0.0
         f05 = 1.5 * precision * recall / (precision + recall) if precision + recall > 0.0 else 0.0
-        precision_ner = num_correct_ner / num_proposed_ner if num_proposed_ner > 0.0 else 0.0
-        recall_ner = num_correct_ner / num_gold_ner if num_gold_ner > 0.0 else 0.0
-        f1_ner = 2.0 * precision_ner * recall_ner / (precision_ner + recall_ner) if precision_ner + recall_ner > 0.0 else 0.0
-        f05_ner = 1.5 * precision_ner * recall_ner / (precision_ner + recall_ner) if precision_ner + recall_ner > 0.0 else 0.0
+        # precision_ner = num_correct_ner / num_proposed_ner if num_proposed_ner > 0.0 else 0.0
+        # recall_ner = num_correct_ner / num_gold_ner if num_gold_ner > 0.0 else 0.0
+        # f1_ner = 2.0 * precision_ner * recall_ner / (precision_ner + recall_ner) if precision_ner + recall_ner > 0.0 else 0.0
+        # f05_ner = 1.5 * precision_ner * recall_ner / (precision_ner + recall_ner) if precision_ner + recall_ner > 0.0 else 0.0
         
         if f1 > best_f1:
             print("Saving the best checkpoint ...")
@@ -435,18 +393,18 @@ class SpELAnnotator:
                 pass
         self.bert_lm.train()
         self.out.train()
-        self.ner_classification_head.train()
+        # self.ner_classification_head.train()
         with open(self.exec_run_file, "a+") as exec_file:
             exec_file.write(f"{precision}, {recall}, {f1}, {f05}, {num_proposed}, {num_correct}, {num_gold}, "
                             f"{epoch+1},,\n")
-        return precision, recall, f1, f05, num_proposed, num_correct, num_gold , subword_eval ,precision_ner, recall_ner, f1_ner, f05_ner
+        return precision, recall, f1, f05, num_proposed, num_correct, num_gold , subword_eval
 
     def inference_evaluate(self, epoch, best_f1, dataset_name='testa'):
         def normalize_string(s):
             return s.strip().replace('.', '').replace(' ', '').lower()
         self.bert_lm.eval()
         self.out.eval()
-        self.ner_classification_head.eval()  # NER用の分類ヘッドを評価モードに変更
+        # self.ner_classification_head.eval()  # NER用の分類ヘッドを評価モードに変更
         evaluation_results = EntityEvaluationScores(dataset_name)
         gold_documents = get_aida_set_phrase_splitted_documents(dataset_name)
         # ゴールドと予測の文字列を格納するリスト
@@ -527,7 +485,7 @@ class SpELAnnotator:
 
 
 
-        # if epoch == 50:
+        # if epoch == 59:
         #     with open("/app/Test/EL/EL_error_no_NER", "w") as file:
         #         file.write(f"### スパンの誤り エラー数: {span_error_count}###\n")
         #         for g_entity, p_entity in span_errors:
@@ -555,7 +513,7 @@ class SpELAnnotator:
             print(f"weights were saved to {fname}.pt")
         self.bert_lm.train()
         self.out.train()
-        self.ner_classification_head.train()
+        # self.ner_classification_head.train()
         return evaluation_results
 
     def prepare_model_checkpoint(self, epoch):

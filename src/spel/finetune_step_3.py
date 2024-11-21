@@ -12,7 +12,7 @@ import os
 import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+# import torch.nn.functional as F
 from tqdm import tqdm
 
 from spel.model import SpELAnnotator
@@ -23,11 +23,11 @@ TRACK_WITH_WANDB = True
 if TRACK_WITH_WANDB:
     import wandb
 
-def focal_loss(logits, targets, alpha=0.25, gamma=2.0):
-    bce_loss = F.cross_entropy(logits, targets, reduction='none')
-    pt = torch.exp(-bce_loss)
-    focal_loss = alpha * (1 - pt) ** gamma * bce_loss
-    return focal_loss.mean()
+# def focal_loss(logits, targets, alpha=0.25, gamma=2.0):
+#     bce_loss = F.cross_entropy(logits, targets, reduction='none')
+#     pt = torch.exp(-bce_loss)
+#     focal_loss = alpha * (1 - pt) ** gamma * bce_loss
+#     return focal_loss.mean()
 
 
 class FinetuneS3(SpELAnnotator):
@@ -63,28 +63,25 @@ class FinetuneS3(SpELAnnotator):
             )
         self.bert_lm.train()
         self.out.train()
-        self.ner_classification_head.train()  # NER用の分類ヘッドも学習モードに設定
+        # self.ner_classification_head.train()  # NER用の分類ヘッドも学習モードに設定
         if bert_dropout > 0:
             for m in self.bert_lm.modules():
                 if isinstance(m, torch.nn.Dropout):
                     m.p = bert_dropout
-        freeze_epochs = 10
-        total_steps = 160 //accumulate_batch_gradients * n_epochs
-        warmup_steps = total_steps * 0.1
-        if freeze_epochs > 0:
-            freeze_steps = 160 //accumulate_batch_gradients * freeze_epochs
-        else:
-            freeze_steps = 0
-        optimizers = self.create_optimizers(encoder_lr, 1e-7, 1e-4, exclude_parameter_names_regex,warmup_steps=warmup_steps, num_training_steps=total_steps,freeze_steps=freeze_steps)
+        # freeze_epochs = 0
+        # total_steps = 160 //accumulate_batch_gradients * n_epochs
+        # warmup_steps = total_steps * 0.1
+        # if freeze_epochs > 0:
+        #     freeze_steps = 160 //accumulate_batch_gradients * freeze_epochs
+        # else:
+        #     freeze_steps = 0
+        optimizers = self.create_optimizers(encoder_lr, 0.0, exclude_parameter_names_regex)
         criterion_el = nn.BCEWithLogitsLoss()  # ELタスク用の損失関数
         criterion_ner = nn.CrossEntropyLoss()  # NERタスク用の損失関数
         best_f1 = 0.0
-        self.freeze_encoder_and_el()
+        # self.freeze_encoder_and_el()
         for epoch in range(n_epochs):
-            if epoch == freeze_epochs:
-                self.unfreeze_encoder_and_el()
             total_loss_el = 0  # ELタスク用の損失
-            total_loss_ner = 0  # NERタスク用の損失
             print(f"Beginning fine-tune epoch {epoch} ...")
             
             _iter_ = tqdm(enumerate(
@@ -101,28 +98,28 @@ class FinetuneS3(SpELAnnotator):
                 logits_el = logits_el.view(-1)  # (N*T, VOCAB)
                 label_probs = subword_mentions_probs.view(-1)  # (N*T,)s
 
-                # NERタスク用のロジット計算
-                logits_ner = self.get_model_raw_logits_training_ner(
-                    inputs.token_ids.to(device), inputs.ner_tags.to(device)  # NERではlabel_probsは使用しないためNoneを渡す
-                )
-                logits_ner = logits_ner.view(-1, logits_ner.size(-1))  # (N*T, VOCAB)
+                # # NERタスク用のロジット計算
+                # logits_ner = self.get_model_raw_logits_training_ner(
+                #     inputs.token_ids.to(device), inputs.ner_tags.to(device)  # NERではlabel_probsは使用しないためNoneを渡す
+                # )
+                # logits_ner = logits_ner.view(-1, logits_ner.size(-1))  # (N*T, VOCAB)
                 
                 # ELタスクとNERタスクの損失を別々に計算
                 loss_el = criterion_el(logits_el, label_probs.clone().detach().to(device))  # ELラベルを使用                            
-                loss_ner = focal_loss(logits_ner,inputs.ner_tags.view(-1).clone().detach().to(device))  # NERラベルを使用
+                # loss_ner = focal_loss(logits_ner,inputs.ner_tags.view(-1).clone().detach().to(device))  # NERラベルを使用
 
 
                 total_loss_el += loss_el.detach().item()
-                total_loss_ner += loss_ner.detach().item()
+                # total_loss_ner += loss_ner.detach().item()
                 cnt_loss += 1.0
 
                 el_weight = 1.0
-                ner_weight = 0.001
+                # ner_weight = 0.0
 
 
 
                 # 合計損失をバックプロパゲーション
-                loss = loss_el * el_weight + loss_ner * ner_weight
+                loss = loss_el * el_weight
                 #loss = self.compute_loss(loss_el, loss_ner)
                 loss.backward()
 
@@ -135,35 +132,33 @@ class FinetuneS3(SpELAnnotator):
                     for optimizer in optimizers:
                         optimizer.step()
                         optimizer.zero_grad()
-                    if epoch >= freeze_epochs:
-                        for sceduler in self.schedulers:
-                            sceduler.step()
-                    else:
-                        self.schedulers[2].step()
+                    # if epoch >= freeze_epochs:
+                    #     for sceduler in self.schedulers:
+                    #         sceduler.step()
+                    # else:
+                    #     self.schedulers[2].step()
                             
 
-                del logits_el, logits_ner
-                del loss_el, loss_ner
+                del logits_el
+                del loss_el
                 del loss
                 del inputs, subword_mentions, label_probs, subword_mentions_probs
                 # _iter_.set_description(f"Avg Loss: {total_loss/cnt_loss:.7f}")
-                _iter_.set_description(f"Avg EL Loss: {total_loss_el/cnt_loss:.7f} | Avg NER Loss: {total_loss_ner/cnt_loss:.7f}")
+                _iter_.set_description(f"Avg EL Loss: {total_loss_el/cnt_loss:.7f}")
                 if TRACK_WITH_WANDB and iter_ % 50 == 49:
-                    wandb.log({"el/avg_loss": total_loss_el/cnt_loss,
-                               "ner/avg_loss": total_loss_ner/cnt_loss
+                    wandb.log({"el/avg_loss": total_loss_el/cnt_loss
                                })   
 
             print(f"\nEvaluating at the end of epoch {epoch}")
 
-            sprecision, srecall, sf1, sf05, snum_proposed, snum_correct, snum_gold, subword_eval, sprecision_ner, srecall_ner, sf1_ner, sf05_ner = self.evaluate(
+            sprecision, srecall, sf1, sf05, snum_proposed, snum_correct, snum_gold, subword_eval = self.evaluate(
                 epoch, eval_batch_size, label_size, 1.1, is_training=False)
             inference_results = self.inference_evaluate(epoch, best_f1)
             if1 = inference_results.micro_entity_linking.f1.compute()
             if best_f1 < if1:
                 best_f1 = if1
             print(f"Subword-level evaluation results: precision={sprecision:.5f}, recall={srecall:.5f}, f1={sf1:.5f}, "
-                  f"f05={sf05:.5f}, precision_ner={sprecision_ner:.5f}, srecall_ner= {srecall_ner:.5f}, "
-                  f"sf1_ner={sf1_ner:.5f}, sf05_ner={sf05_ner:.5f}, \n num_proposed={snum_proposed}, num_correct={snum_correct}, num_gold={snum_gold}")
+                  f"f05={sf05:.5f}, \n num_proposed={snum_proposed}, num_correct={snum_correct}, num_gold={snum_gold}")
             print("Entity-level evaluation results:")
             print(inference_results)
             mm_alloc = torch.cuda.memory_allocated() / (math.pow(2, 30))
@@ -179,10 +174,10 @@ class FinetuneS3(SpELAnnotator):
                     "el/s_num_proposed": snum_proposed,
                     "el/s_num_correct": snum_correct,
                     "s_num_gold": snum_gold,
-                    "ner/s_prescision": sprecision_ner,
-                    "ner/s_recall": srecall_ner,
-                    "ner/s_f1": sf1_ner,
-                    "ner/s_f05": sf05_ner,
+                    # "ner/s_prescision": sprecision_ner,
+                    # "ner/s_recall": srecall_ner,
+                    # "ner/s_f1": sf1_ner,
+                    # "ner/s_f05": sf05_ner,
                     "el/micro_f1": inference_results.micro_entity_linking.f1.compute(),
                     "el/macro_f1": inference_results.macro_entity_linking.f1.compute(),
                     "md/micro_f1": inference_results.micro_mention_detection.f1.compute(),

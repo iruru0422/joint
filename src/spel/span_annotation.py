@@ -11,7 +11,7 @@ class PhraseAnnotation:
         self.words = [initial_word]
         self._resolved_annotation = initial_word.resolved_annotation
         self.ppr_for_ned_candidates = initial_word.ppr_for_ned_candidates
-        self.ner_tag = initial_word.ner_tag
+        # self.ner_tag = initial_word.ner_tag
 
     @property
     def has_valid_bioes_labels(self):
@@ -65,7 +65,7 @@ class PhraseAnnotation:
 
 
 class WordAnnotation:
-    def __init__(self, subword_annotations, token_offsets, ppr_for_ned_candidates=None, ner_tag = None):
+    def __init__(self, subword_annotations, token_offsets, ppr_for_ned_candidates=None):
         if ppr_for_ned_candidates is None:
             ppr_for_ned_candidates = []
         self.annotations = subword_annotations
@@ -87,7 +87,7 @@ class WordAnnotation:
         assert self.resolved_annotation in [x[0] for x in self.candidates]
         self.has_valid_bioes_labels = all([x.has_valid_bioes_label for x in self.annotations])
         self.bioes_labels = None if not self.has_valid_bioes_labels else [x.bioes_label for x in self.annotations]
-        self.ner_tag = ner_tag
+        # self.ner_tag = ner_tag
 
     def _resolve_annotation(self):
         if not self.is_valid_annotation:
@@ -134,7 +134,7 @@ class SubwordAnnotation:
     The value of his class will be equal to the value of its "self.top_k_i_list[0]", the rest of the information will be
      carried over for future decision-making and evaluation.
     """
-    def __init__(self, top_k_p_list, top_k_i_list, subword_string, ner_tag=None):
+    def __init__(self, top_k_p_list, top_k_i_list, subword_string):
         self.top_k_p_list = top_k_p_list
         self.top_k_i_list = top_k_i_list
         subword_string = "UNDEF_STR" if not subword_string else subword_string
@@ -142,7 +142,7 @@ class SubwordAnnotation:
         self.bioes_label = 2
         self.has_valid_bioes_label = False
         self.bioes_probabilities = None
-        self.ner_tag = ner_tag
+        # self.ner_tag = ner_tag
 
     def __eq__(self, other):
         if isinstance(other, int):

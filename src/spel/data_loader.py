@@ -47,7 +47,7 @@ from torchtext.utils import download_from_url
 from transformers import AutoTokenizer, BatchEncoding
 
 from spel.configuration import (get_aida_plus_wikipedia_plus_out_of_domain_vocab, get_aida_train_canonical_redirects,
-                                get_aida_vocab, get_ood_vocab, get_checkpoints_dir, get_base_model_name, get_aida_ner_vocab,device)
+                                get_aida_vocab, get_ood_vocab, get_checkpoints_dir, get_base_model_name,device)
 
 from spel.aida import AIDADataset 
 
@@ -73,17 +73,17 @@ class StaticAccess:
         aida_mentions_itos = [w[0] for w in sorted(aida_mentions_vocab.items(), key=lambda x: x[1])]
         return aida_mentions_vocab, aida_mentions_itos
 
-    @staticmethod
-    def get_aida_ner_vocab_and_itos():
-        aida_ner_mentions_vocab = get_aida_ner_vocab()
-        aida_mentions_itos = [w[0] for w in sorted(aida_ner_mentions_vocab.items(), key=lambda x: x[1])]
-        return aida_ner_mentions_vocab, aida_mentions_itos
+    # @staticmethod
+    # def get_aida_ner_vocab_and_itos():
+    #     aida_ner_mentions_vocab = get_aida_ner_vocab()
+    #     aida_mentions_itos = [w[0] for w in sorted(aida_ner_mentions_vocab.items(), key=lambda x: x[1])]
+    #     return aida_ner_mentions_vocab, aida_mentions_itos
 
     def shrink_vocab_to_aida(self):
         self.mentions_vocab, self.mentions_itos = self.get_aida_vocab_and_itos()
 
-    def make_vocab_to_ner(self):
-        self.ner_class, self.ner_itos = self.get_aida_ner_vocab_and_itos()
+    # def make_vocab_to_ner(self):
+    #     self.ner_class, self.ner_itos = self.get_aida_ner_vocab_and_itos()
 
     def get_all_vocab_mask_for_aida(self):
         if self._all_vocab_mask_for_aida is None:
@@ -126,7 +126,7 @@ class ENWIKI20230827V2Config:
 class AIDA20230827Config:
     URL = "https://1sfu-my.sharepoint.com/:u:/g/personal/sshavara_sfu_ca/EajEGYyf8LBOoxqDaiPBvbgBwFuEC08nssvZwGJWsG_HXg?e=wAwV6H&download=1"
     MD5 = "8078529d5df96d0d1ecf6a505fdb767a"
-    PATH = "aida-conll-spel-roberta-tokenized-aug-23-2023.tar.gz"
+    PATH = "aida-conll-spel-roberta-tokenized-aug-23-2023-origin.tar.gz"
     DATASET_NAME = "AIDA20230827"
     NUM_LINES = {'train': 1585, 'valid': 391, 'test': 372}
 
@@ -198,35 +198,35 @@ def aida_select_split(s, file_name_data):
 
 def aida_data_record_convert(r):
     for x in r:  # making sure each token comes with exactly one annotation
-        #assert len(x) == 7 or len(x) == 8  # whether it contains the candidates or not
+        assert len(x) == 7 or len(x) == 8  # whether it contains the candidates or not
         return {"tokens": [x[0] for x in r], "mentions": [[x[4] if x[4] else "|||O|||"] for x in r],
                 "mention_entity_probs": [[1.0] for _ in r], "mention_probs": [[1.0] for _ in r],
-                "candidates": [x[7] if x[7] else [] for x in r] if len(x) == 8 else [[] for x in r],
-                "ner_tags": [x[8] if len(x) > 8 and x[8] else "O" for x in r]  # NERタグを取得
+                "candidates": [x[7] if x[7] else [] for x in r] if len(x) == 8 else [[] for x in r]
+                # "ner_tags": [x[8] if len(x) > 8 and x[8] else "O" for x in r]  # NERタグを取得
                 }
 
-
-# @_create_dataset_directory(dataset_name=AIDA20230827Config.DATASET_NAME)
-# @_wrap_split_argument(('train', 'valid', 'test'))
-# def AIDA20230827(root, split):
-#     online_reader_dp = HttpReader(IterableWrapper([AIDA20230827Config.URL])).on_disk_cache(
-#         filepath_fn=partial(aida_path_fn, root), hash_dict={aida_path_fn(root): AIDA20230827Config.MD5},
-#         hash_type="md5").end_caching(mode="wb", same_filepath_fn=True)
-
-#     return FileOpener(online_reader_dp, mode="b").load_from_tar().parse_json_files().flatmap(
-#         partial(aida_select_split, split)).map(partial(aida_data_record_convert))
 
 @_create_dataset_directory(dataset_name=AIDA20230827Config.DATASET_NAME)
 @_wrap_split_argument(('train', 'valid', 'test'))
 def AIDA20230827(root, split):
-    # ローカルパスを指定
-    local_tar_gz_path = "/app/SpEL/.checkpoints/datasets/AIDA20230827/aida-conll-spel-roberta-tokenized-aug-23-2023.tar.gz"
+    online_reader_dp = HttpReader(IterableWrapper([AIDA20230827Config.URL])).on_disk_cache(
+        filepath_fn=partial(aida_path_fn, root), hash_dict={aida_path_fn(root): AIDA20230827Config.MD5},
+        hash_type="md5").end_caching(mode="wb", same_filepath_fn=True)
 
-    # tar.gzファイルを開く処理を変更し、解凍のみ実行
-    return FileOpener(IterableWrapper([local_tar_gz_path]), mode="b").load_from_tar().filter(
-        lambda file_name_and_stream: file_name_and_stream[0].endswith('.json')
-    ).parse_json_files().flatmap(
+    return FileOpener(online_reader_dp, mode="b").load_from_tar().parse_json_files().flatmap(
         partial(aida_select_split, split)).map(partial(aida_data_record_convert))
+
+# @_create_dataset_directory(dataset_name=AIDA20230827Config.DATASET_NAME)
+# @_wrap_split_argument(('train', 'valid', 'test'))
+# def AIDA20230827(root, split):
+#     # ローカルパスを指定
+#     local_tar_gz_path = "/app/SpEL/.checkpoints/datasets/AIDA20230827/aida-conll-spel-roberta-tokenized-aug-23-2023.tar.gz"
+
+#     # tar.gzファイルを開く処理を変更し、解凍のみ実行
+#     return FileOpener(IterableWrapper([local_tar_gz_path]), mode="b").load_from_tar().filter(
+#         lambda file_name_and_stream: file_name_and_stream[0].endswith('.json')
+#     ).parse_json_files().flatmap(
+#         partial(aida_select_split, split)).map(partial(aida_data_record_convert))
 
 
 
@@ -288,19 +288,19 @@ def get_dataset(dataset_name: str, split: str, batch_size: int, get_labels_with_
 
     def collate_batch(batch):
         data = {}
-        ner_label_mapping = {
-                            'O': 0,
-                            'B-PER': 1,
-                            'I-PER': 2,
-                            'B-ORG': 3,
-                            'I-ORG': 4,
-                            'B-LOC': 5,
-                            'I-LOC': 6,
-                            'B-MISC': 7,
-                            'I-MISC': 8
-                        }
-        def convert_ner_tags_to_ids(ner_tags):
-            return [ner_label_mapping[tag] if tag in ner_label_mapping else 0 for tag in ner_tags]
+        # ner_label_mapping = {
+        #                     'O': 0,
+        #                     'B-PER': 1,
+        #                     'I-PER': 2,
+        #                     'B-ORG': 3,
+        #                     'I-ORG': 4,
+        #                     'B-LOC': 5,
+        #                     'I-LOC': 6,
+        #                     'B-MISC': 7,
+        #                     'I-MISC': 8
+        #                 }
+        # def convert_ner_tags_to_ids(ner_tags):
+        #     return [ner_label_mapping[tag] if tag in ner_label_mapping else 0 for tag in ner_tags]
         
         for key in ["tokens", "mentions", "mention_entity_probs", "eval_mask", "candidates", "is_in_mention", "bioes", "ner_tags"]:
             data[key] = []
@@ -320,7 +320,7 @@ def get_dataset(dataset_name: str, split: str, batch_size: int, get_labels_with_
                              for x, y in zip(el, elp) if y == max(elp)]
             data["is_in_mention"].append(is_in_mention)
             data["bioes"].append(convert_is_in_mention_to_bioes(is_in_mention))
-            data["ner_tags"].append(convert_ner_tags_to_ids(annotated_line_in_file["ner_tags"]))
+            # data["ner_tags"].append(convert_ner_tags_to_ids(annotated_line_in_file["ner_tags"]))
         
 
         maxlen = max([len(x) for x in data["tokens"]])
@@ -328,7 +328,7 @@ def get_dataset(dataset_name: str, split: str, batch_size: int, get_labels_with_
         eval_mask = torch.LongTensor([sample + [0] * (maxlen - len(sample)) for sample in data["eval_mask"]])
         is_in_mention = torch.LongTensor([sample + [0] * (maxlen - len(sample)) for sample in data["is_in_mention"]])
         bioes = torch.LongTensor([sample + [2] * (maxlen - len(sample)) for sample in data["bioes"]])
-        ner_tags = torch.LongTensor([sample + [0] * (maxlen - len(sample)) for sample in data["ner_tags"]])
+        # ner_tags = torch.LongTensor([sample + [0] * (maxlen - len(sample)) for sample in data["ner_tags"]])
         if get_labels_with_high_model_score:
             labels_with_high_model_score = get_labels_with_high_model_score(token_ids)
         else:
@@ -342,8 +342,8 @@ def get_dataset(dataset_name: str, split: str, batch_size: int, get_labels_with_
             'eval_mask': eval_mask,
             'raw_mentions': data["mentions"],
             'is_in_mention': is_in_mention,
-            "bioes": bioes,
-            "ner_tags": ner_tags
+            "bioes": bioes
+            # "ner_tags": ner_tags
         })
         return inputs , subword_mentions
     if not load_distributed or rank == 0:
