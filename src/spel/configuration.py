@@ -4,7 +4,7 @@ import pathlib
 import json
 from datetime import date
 
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 AIDA_CANONICAL_REDIRECTS = None
 OOD_CANONICAL_REDIRECTS = None

@@ -232,11 +232,11 @@ if __name__ == "__main__":
         _arguments_ = {
             "world_size": w_size,
             "n_epochs": 14,
-            "batch_size": 10,
+            "batch_size": 5,
             "eval_batch_size": 4,
             "encoder_lr": 5e-5,
             "decoder_lr": 0.01,
-            "accumulate_batch_gradients": 4,
+            "accumulate_batch_gradients": 1,
             "label_size": 10240,
             "evaluate_every": int(4000/w_size) if w_size > 1 else 15000,
             "n_epochs_freeze_bert": 3,

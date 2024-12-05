@@ -199,34 +199,34 @@ def aida_select_split(s, file_name_data):
 def aida_data_record_convert(r):
     for x in r:  # making sure each token comes with exactly one annotation
         assert len(x) == 7 or len(x) == 8  # whether it contains the candidates or not
-        return {"tokens": [x[0] for x in r], "mentions": [[x[4] if x[4] else "|||O|||"] for x in r],
-                "mention_entity_probs": [[1.0] for _ in r], "mention_probs": [[1.0] for _ in r],
-                "candidates": [x[7] if x[7] else [] for x in r] if len(x) == 8 else [[] for x in r]
-                # "ner_tags": [x[8] if len(x) > 8 and x[8] else "O" for x in r]  # NERタグを取得
-                }
+    return {"tokens": [x[0] for x in r], "mentions": [[x[4] if x[4] else "|||O|||"] for x in r],
+            "mention_entity_probs": [[1.0] for _ in r], "mention_probs": [[[1.0] if x[5] != -100 else [] ]for x in r],
+            "candidates": [x[7] if x[7] else [] for x in r] if len(x) == 8 else [[] for x in r]
+            # "ner_tags": [x[8] if len(x) > 8 and x[8] else "O" for x in r]  # NERタグを取得
+            }
 
-
-@_create_dataset_directory(dataset_name=AIDA20230827Config.DATASET_NAME)
-@_wrap_split_argument(('train', 'valid', 'test'))
-def AIDA20230827(root, split):
-    online_reader_dp = HttpReader(IterableWrapper([AIDA20230827Config.URL])).on_disk_cache(
-        filepath_fn=partial(aida_path_fn, root), hash_dict={aida_path_fn(root): AIDA20230827Config.MD5},
-        hash_type="md5").end_caching(mode="wb", same_filepath_fn=True)
-
-    return FileOpener(online_reader_dp, mode="b").load_from_tar().parse_json_files().flatmap(
-        partial(aida_select_split, split)).map(partial(aida_data_record_convert))
 
 # @_create_dataset_directory(dataset_name=AIDA20230827Config.DATASET_NAME)
 # @_wrap_split_argument(('train', 'valid', 'test'))
 # def AIDA20230827(root, split):
-#     # ローカルパスを指定
-#     local_tar_gz_path = "/app/SpEL/.checkpoints/datasets/AIDA20230827/aida-conll-spel-roberta-tokenized-aug-23-2023.tar.gz"
+#     online_reader_dp = HttpReader(IterableWrapper([AIDA20230827Config.URL])).on_disk_cache(
+#         filepath_fn=partial(aida_path_fn, root), hash_dict={aida_path_fn(root): AIDA20230827Config.MD5},
+#         hash_type="md5").end_caching(mode="wb", same_filepath_fn=True)
 
-#     # tar.gzファイルを開く処理を変更し、解凍のみ実行
-#     return FileOpener(IterableWrapper([local_tar_gz_path]), mode="b").load_from_tar().filter(
-#         lambda file_name_and_stream: file_name_and_stream[0].endswith('.json')
-#     ).parse_json_files().flatmap(
+#     return FileOpener(online_reader_dp, mode="b").load_from_tar().parse_json_files().flatmap(
 #         partial(aida_select_split, split)).map(partial(aida_data_record_convert))
+
+@_create_dataset_directory(dataset_name=AIDA20230827Config.DATASET_NAME)
+@_wrap_split_argument(('train', 'valid', 'test'))
+def AIDA20230827(root, split):
+    # ローカルパスを指定
+    local_tar_gz_path = "/app/SpEL/.checkpoints/datasets/AIDA20230827/aida-conll-spel-roberta-tokenized-aug-23-2023-100.tar.gz"
+
+    # tar.gzファイルを開く処理を変更し、解凍のみ実行
+    return FileOpener(IterableWrapper([local_tar_gz_path]), mode="b").load_from_tar().filter(
+        lambda file_name_and_stream: file_name_and_stream[0].endswith('.json')
+    ).parse_json_files().flatmap(
+        partial(aida_select_split, split)).map(partial(aida_data_record_convert))
 
 
 

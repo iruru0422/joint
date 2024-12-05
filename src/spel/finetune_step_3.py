@@ -75,9 +75,8 @@ class FinetuneS3(SpELAnnotator):
         #     freeze_steps = 160 //accumulate_batch_gradients * freeze_epochs
         # else:
         #     freeze_steps = 0
-        optimizers = self.create_optimizers(encoder_lr, 0.0, exclude_parameter_names_regex)
+        optimizers = self.create_optimizers(encoder_lr, 1e-7, exclude_parameter_names_regex)
         criterion_el = nn.BCEWithLogitsLoss()  # ELタスク用の損失関数
-        criterion_ner = nn.CrossEntropyLoss()  # NERタスク用の損失関数
         best_f1 = 0.0
         # self.freeze_encoder_and_el()
         for epoch in range(n_epochs):
@@ -97,6 +96,10 @@ class FinetuneS3(SpELAnnotator):
                     inputs.token_ids.to(device), subword_mentions.ids.to(device), subword_mentions_probs)
                 logits_el = logits_el.view(-1)  # (N*T, VOCAB)
                 label_probs = subword_mentions_probs.view(-1)  # (N*T,)s
+                eval_mask = inputs.eval_mask.unsqueeze(-1).expand(-1, -1, 5600).reshape(-1)  # (N*T,)
+                
+                masked_logits_el = logits_el[eval_mask == 1]
+                masked_label_probs = label_probs[eval_mask == 1]
 
                 # # NERタスク用のロジット計算
                 # logits_ner = self.get_model_raw_logits_training_ner(
@@ -105,7 +108,7 @@ class FinetuneS3(SpELAnnotator):
                 # logits_ner = logits_ner.view(-1, logits_ner.size(-1))  # (N*T, VOCAB)
                 
                 # ELタスクとNERタスクの損失を別々に計算
-                loss_el = criterion_el(logits_el, label_probs.clone().detach().to(device))  # ELラベルを使用                            
+                loss_el = criterion_el(masked_logits_el, masked_label_probs.clone().detach().to(device))  # ELラベルを使用                            
                 # loss_ner = focal_loss(logits_ner,inputs.ner_tags.view(-1).clone().detach().to(device))  # NERラベルを使用
 
 

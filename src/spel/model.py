@@ -49,7 +49,7 @@ class SpELAnnotator:
             self.disable_roberta_lm_head()
             self.number_of_bert_layers = self.bert_lm.config.num_hidden_layers + 1
             self.bert_lm_h = self.bert_lm.config.hidden_size
-            self.ner_classification_head = nn.Linear(self.bert_lm_h, 9).to(device)  # NERタスク用の新しい線形層を追加
+            # self.ner_classification_head = nn.Linear(self.bert_lm_h, 9).to(device)  # NERタスク用の新しい線形層を追加
             self.out = nn.Embedding(num_embeddings=len(dl_sa.mentions_vocab),
                                     embedding_dim=self.bert_lm_h, sparse=True).to(device)
             #self.schedulers = []
