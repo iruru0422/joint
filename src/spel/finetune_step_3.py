@@ -34,7 +34,7 @@ class FinetuneS3(SpELAnnotator):
     def __init__(self):
         super(FinetuneS3, self).__init__()
 
-    def finetune(self, checkpoint_name, n_epochs, batch_size, bert_dropout=0.2, encoder_lr=5e-5, label_size=8196,
+    def finetune(self, checkpoint_name, n_epochs, batch_size, bert_dropout=0.2, encoder_lr=5e-5, decoder_lr = 0.01, label_size=8196,
                  accumulate_batch_gradients=4,  exclude_parameter_names_regex='embeddings|encoder\\.layer\\.[0-2]\\.',
                  eval_batch_size=1):
         self.init_model_from_scratch(device=device)
@@ -75,7 +75,10 @@ class FinetuneS3(SpELAnnotator):
         #     freeze_steps = 160 //accumulate_batch_gradients * freeze_epochs
         # else:
         #     freeze_steps = 0
-        optimizers = self.create_optimizers(encoder_lr, 1e-7, exclude_parameter_names_regex)
+        optimizer_warmup_steps = 0
+        optimizers = self.create_optimizers(encoder_lr, decoder_lr, exclude_parameter_names_regex)
+        # original_warmup_schedulers = [self.create_warmup_scheduler(o, optimizer_warmup_steps)
+        #                           for o in optimizers] if optimizer_warmup_steps > 0 else None
         criterion_el = nn.BCEWithLogitsLoss()  # ELタスク用の損失関数
         best_f1 = 0.0
         # self.freeze_encoder_and_el()
@@ -198,7 +201,7 @@ class FinetuneS3(SpELAnnotator):
 if __name__ == '__main__':
     try:
         b_annotator = FinetuneS3()
-        b_annotator.finetune(checkpoint_name=None, n_epochs=60, batch_size=10, bert_dropout=0.2, label_size=10240,
+        b_annotator.finetune(checkpoint_name=None, n_epochs=30, batch_size=20, bert_dropout=0.2, label_size=10240,
                              eval_batch_size=2)
     finally:
         if TRACK_WITH_WANDB:
