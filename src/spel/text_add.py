@@ -7,11 +7,32 @@ import numpy as np
 from transformers import RobertaTokenizer
 from spel.data_loader import dl_sa 
 from openai import OpenAI
- 
+from transformers import BertTokenizer, BertModel
+# from scipy.spatial.distance import cosine
+
+# def get_entity_embedding(entity):
+#     input_ids = tokenizer.encode(entity, return_tensors='pt', truncation=True, max_length=512)
+#     with torch.no_grad():
+#         outputs = model(input_ids)
+#     last_hidden_states = outputs.last_hidden_state
+#     entity_embedding = last_hidden_states.mean(dim=1).squeeze()
+#     return entity_embedding.numpy()
+
+# def cosine_similarity(vec1, vec2):
+#     return 1 - cosine(vec1, vec2)
+
+
+# tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+# model = BertModel.from_pretrained('bert-base-uncased')
+
+
 client = OpenAI(
     api_key=os.getenv("OPEN_AI_API_KEY")
 )
 entity_file_path = "/app/SpEL/resources/vocab/aida_no_entry.txt"
+aida_entity_file_path = "/app/SpEL/resources/vocab/aida.txt"
+enwiki_entity_file_path = "/app/SpEL/resources/vocab/enwiki_20230827.txt"
+out_of_domain_entity_file_path = "/app/SpEL/resources/vocab/out_of_domain.txt"
 
 # cluster_entity_path = "/app/Test/generate_data/clusters.txt"
 # with open(cluster_entity_path, 'r') as data_file:
@@ -31,6 +52,27 @@ entity_file_path = "/app/SpEL/resources/vocab/aida_no_entry.txt"
 with open(entity_file_path, 'r') as data_file:
     entity_list = [line.strip() for line in data_file.readlines()]
 
+# 候補生成用
+# with open(aida_entity_file_path, 'r') as data_file:
+#     all_entity_list = [line.strip() for line in data_file.readlines()]
+
+# with open(enwiki_entity_file_path, 'r') as data_file:
+#     for line in data_file.readlines():
+#         e = line.strip()
+#         if e not in all_entity_list:
+#             all_entity_list.append(e)
+
+# with open(out_of_domain_entity_file_path, 'r') as data_file:
+#     for line in data_file.readlines():
+#         e = line.strip()
+#         if e not in all_entity_list:
+#             all_entity_list.append(e)
+
+# all_entity_embeddings = [get_entity_embedding(entity) for entity in tqdm(all_entity_list)]
+# # 類似度の閾値を設定
+# similarity_threshold = 0.8
+
+    
 mention_etoa = dl_sa.aida_canonical_redirects
 aliases = dict()
 for key, value in mention_etoa.items():
@@ -88,21 +130,14 @@ for key, value in mention_etoa.items():
 mentions_vocab, mentions_itos= dl_sa.get_aida_vocab_and_itos()
 tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
 
-# generate_txt = "/app/Test/generate_data/generate_data_text.txt"
-# generate_entity_list = "/app/Test/generate_data/generate_data_entity.txt"
-
-# with open(generate_txt, 'r') as data_file:
-#     text_list = [line.strip() for line in data_file.readlines()]
-
-# with open(generate_entity_list, 'r') as data_file:
-#     entity_list = [line.strip().split(", ") for line in data_file.readlines()]
-
 document_list = []
 with open('/app/spel-aida-model/conll_dataset_20230823_254-20_origin.json', 'r', encoding='utf-8') as json_file:
     data_json = json.load(json_file)
 
 to_output = []
 ejected_text = []
+document_flag = 0
+alias = ""
 for entity in tqdm(entity_list):
     tokens = []
     IDs = []
@@ -126,42 +161,53 @@ for entity in tqdm(entity_list):
         for datas in data_json[t]:
             for data in datas:
                 if data[4] not in candidate_dict:
-                    candidate_dict[data[4]] = [data[5],data[7]]
+                    candidate_dict[data[4]] = data[7]
     
-    if entity == "":
-        continue
-    if entity in aliases:
-        info = entity + "は" + aliases[entity] + "と同じ意味です."
-        alias= aliases[entity]
-        entity = alias
-    else:
-        info = ""
-        alias = None
-    try:
-        response = client.chat.completions.create(
-            model ="gpt-4o-mini-2024-07-18",
-            messages=[
-                    {
-                    "role": "system",
-                    "content": 'あなたは言語学者です. 与えられたエンティティを使って100token以下の段落状の文章を英語で生成してください. '
-                    },
-                    {
-                    "role": "user",
-                    "content": f"{entity}\n{info}"
-                    }
-            ],
-                temperature = 0.4,
-                max_tokens=150,
-        )
-        text = response.choices[0].message.content.replace("_"," ")
+    # entity_embedding = get_entity_embedding(entity)
+    # similarities = [(other_entity, cosine_similarity(entity_embedding, other_embedding))
+    #                 for other_entity, other_embedding in zip(all_entity_list, all_entity_embeddings)]
+    # # 類似度が閾値以上の候補を取得
+    # filtered_similarities = [item for item in similarities if item[1] >= similarity_threshold]
+    # candidate_dict[entity] = filtered_similarities
 
-    except KeyError as e:
-        print(f"KeyError: The expected key was not found in the response: {e}")
-        continue
-    except Exception as e:
-        print(f"Error occurred while processing the entity '{entity}': {e}")
-        continue
- 
+    if document_flag:
+        if entity == "":
+            continue
+        if entity in aliases:
+            info = entity + "means the same as" + aliases[entity] 
+            alias= aliases[entity]
+            entity = alias
+        else:
+            info = ""
+            alias = None
+        try:
+            response = client.chat.completions.create(
+                model ="gpt-4o-mini-2024-07-18",
+                messages=[
+                        {
+                        "role": "system",
+                        "content": 'You are a linguist. Generate a paragraph of text in English with no more than 30 tokens using the given entities. The generated sentences are used as additional training data for the AIDA dataset, which is a news domain dataset.'
+                        },
+                        {
+                        "role": "user",
+                        "content": f"{entity}\n{info}"
+                        }
+                ],
+                    temperature = 0.4,
+                    max_tokens=120,
+            )
+            text = response.choices[0].message.content.replace("_"," ")
+
+        except KeyError as e:
+            print(f"KeyError: The expected key was not found in the response: {e}")
+            continue
+        except Exception as e:
+            print(f"Error occurred while processing the entity '{entity}': {e}")
+            continue
+    
+    else:
+        text = entity
+
     for count,word in enumerate(text.split()):
         if saved_word:
             full_word = saved_word + "_" + word
@@ -217,9 +263,9 @@ for entity in tqdm(entity_list):
 
         if full_mention:
             saved_word = None
-    for token,token_id,bio,bio_id,ment, token_num in zip(tokens,IDs,BIO_tag,BIO_id,mention,token_numbers):
-        if ment in candidate_dict:
-            document_group.append([token,token_id,bio,bio_id,ment,candidate_dict.get(ment)[0],token_num,candidate_dict.get(ment)[1]])
+    for token,token_id,bio,bio_id,ment,token_num in zip(tokens,IDs,BIO_tag,BIO_id,mention,token_numbers):
+        if ment and ment in candidate_dict:
+            document_group.append([token,token_id,bio,bio_id,ment,0,token_num,[1]])
         else:
             document_group.append([token,token_id,bio,bio_id,ment,-100,token_num,None])
     if all(document_group[i][5] < 0   for i in range(len(document_group))):
@@ -232,10 +278,10 @@ for document_group in document_list:
 with open('/app/spel-aida-model/conll_dataset_20230823_254-20_auto_annotate.json', 'w', encoding='utf-8') as json_file:
     json.dump(data_json, json_file, ensure_ascii=False, indent=4)
 
-with open('/app/Test/generate_data/generated_data4_text.txt', 'w') as f:
-    for text in to_output:
-        f.write(text.rstrip("\n") + "\n")
+# with open('/app/Test/generate_data/generated_data_text_domain.txt', 'w') as f:
+#     for text in to_output:
+#         f.write(text.rstrip("\n") + "\n")
 
-with open('/app/Test/generate_data/ejected_text4.txt', 'w') as f:
-    for text in ejected_text:
-        f.write(text.rstrip("\n") + "\n")
+# with open('/app/Test/generate_data/ejected_text_domain.txt', 'w') as f:
+#     for text in ejected_text:
+#         f.write(text.rstrip("\n") + "\n")
