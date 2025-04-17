@@ -136,7 +136,7 @@ with open('/app/spel-aida-model/conll_dataset_20230823_254-20_origin.json', 'r',
 
 to_output = []
 ejected_text = []
-document_flag = 0
+document_flag = 1
 alias = ""
 for entity in tqdm(entity_list):
     tokens = []
@@ -186,7 +186,7 @@ for entity in tqdm(entity_list):
                 messages=[
                         {
                         "role": "system",
-                        "content": 'You are a linguist. Generate a paragraph of text in English with no more than 30 tokens using the given entities. The generated sentences are used as additional training data for the AIDA dataset, which is a news domain dataset.'
+                        "content": 'You are a linguist. Generate a coherent English paragraph using all the given entities naturally. The paragraph must adhere to a news-like style appropriate for the AIDA dataset and be no more than 30 tokens long. Ensure that the entities are meaningfully integrated into the context.'
                         },
                         {
                         "role": "user",
@@ -264,7 +264,7 @@ for entity in tqdm(entity_list):
         if full_mention:
             saved_word = None
     for token,token_id,bio,bio_id,ment,token_num in zip(tokens,IDs,BIO_tag,BIO_id,mention,token_numbers):
-        if ment and ment in candidate_dict:
+        if ment:
             document_group.append([token,token_id,bio,bio_id,ment,0,token_num,[1]])
         else:
             document_group.append([token,token_id,bio,bio_id,ment,-100,token_num,None])
@@ -278,10 +278,10 @@ for document_group in document_list:
 with open('/app/spel-aida-model/conll_dataset_20230823_254-20_auto_annotate.json', 'w', encoding='utf-8') as json_file:
     json.dump(data_json, json_file, ensure_ascii=False, indent=4)
 
-# with open('/app/Test/generate_data/generated_data_text_domain.txt', 'w') as f:
-#     for text in to_output:
-#         f.write(text.rstrip("\n") + "\n")
+with open('/app/Test/generate_data/generated_data_text_domain2.txt', 'w') as f:
+    for text in to_output:
+        f.write(text.rstrip("\n") + "\n")
 
-# with open('/app/Test/generate_data/ejected_text_domain.txt', 'w') as f:
-#     for text in ejected_text:
-#         f.write(text.rstrip("\n") + "\n")
+with open('/app/Test/generate_data/ejected_text_domain2.txt', 'w') as f:
+    for text in ejected_text:
+        f.write(text.rstrip("\n") + "\n")
